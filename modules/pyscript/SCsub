@@ -1,0 +1,36 @@
+Import("env")
+Import("env_modules")
+
+env_pyscript = env_modules.Clone()
+
+# Thirdparty source files
+cpython_dir = "#thirdparty/cpython"
+#bzip2_dir = "#thirdparty/bzip2/"
+
+def AllSources(node='.', pattern='*'): 
+    result = [AllSources(dir, pattern) 
+       for dir in Glob(str(node)+'/*') 
+       if dir.isdir()] 
+    result += [source 
+       for source in Glob(str(node)+'/'+pattern) 
+       if source.isfile()] 
+    return result
+
+#thirdparty_sources = AllSources(cpython_dir+'/src', '*.c')
+# , cpython_dir+'/include/internal/', bzip2_dir
+env_pyscript.Prepend(CPPPATH=[cpython_dir+'/include/'])
+#env_pyscript.Prepend(LIBPATH = [cpython_dir+'/libs/'])
+#env_pyscript.Prepend(LIBS = ['python37'])
+#env_modules.Prepend(LIBPATH = [cpython_dir+'/libs/'])
+#env_modules.Prepend(LIBS = ['python37'])
+#env_pyscript.Append(CPPDEFINES=[ 'Py_NO_ENABLE_SHARED', 'Py_BUILD_CORE' ])
+#env_pyscript.Append(LIBPATH = [bzip2_dir])
+#env_pyscript.Append(LIBS = ['libbz2-static.lib'])
+#env_thirdparty = env_pyscript.Clone()
+#env_thirdparty.disable_warnings()
+#env_thirdparty.add_source_files(env.modules_sources, thirdparty_sources)
+
+#env_thirdparty.Append(CPPDEFINES=[ 'HAVE_SSE2' ])
+
+
+env_pyscript.add_source_files(env.modules_sources, "*.cpp")
