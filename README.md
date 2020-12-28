@@ -1,4 +1,4 @@
-[ÖÐÎÄreadme](README_zh.md)
+[ä¸­æ–‡readme](README_zh.md)
 
 # Python library in Godot
  Godot module for use Python libray on gdscript.
