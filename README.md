@@ -26,7 +26,7 @@ Python object set operate can not trigger something(I don't know the python mech
 ```
 obj.a2 = 99
 ```
-It only set the obj.__dict__[a2] to 99.
+It only set the obj._ _dict_ _[a2] to 99.
 
 # Usage
 Load python libray.
