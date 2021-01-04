@@ -1016,6 +1016,11 @@ bool PyScriptInstance::has_method(const StringName& p_method) const
 		ret = attr && (PyFunction_Check(attr) || PyMethod_Check(attr) || PyInstanceMethod_Check(attr) || PyType_Check(attr));
 		Py_XDECREF(attr);
 	}
+	if (!ret && PyIter_Check(obj))
+	{
+		if (p_method == "next")
+			ret = true;
+	}
 	return ret;
 }
 
@@ -1110,7 +1115,27 @@ Variant PyScriptInstance::call(const StringName& p_method, const Variant** p_arg
 			}
 			
 			Py_XDECREF(func);
-		}		
+		}
+		else if (PyIter_Check(obj))
+		{
+			if (p_method == "next")
+			{
+				if (p_argcount > 0)
+				{
+					r_error.error = Variant::CallError::CALL_ERROR_TOO_MANY_ARGUMENTS;
+					r_error.argument = 0;
+					return Variant();
+				}
+				PyObject* iter = PyObject_GetIter(obj);
+				PyObject* pRet = PyIter_Next(iter);
+				Variant ret = PyScript::py2gd(pRet);
+				Py_XDECREF(pRet);
+				Py_DECREF(iter);
+				r_error.argument = 0;
+				r_error.error = Variant::CallError::CALL_OK;
+				return ret;
+			}
+		}
 	}
 	r_error.error = Variant::CallError::CALL_ERROR_INVALID_METHOD;
 	r_error.argument = 0;
