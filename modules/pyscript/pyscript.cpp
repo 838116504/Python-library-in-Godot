@@ -1,6 +1,44 @@
 #include "pyscript.h"
 #include "core/os/file_access.h"
 
+Python* Python::singleton = NULL;
+
+Variant Python::dir(const Variant& p_obj) const
+{
+	Ref<PyScript> script(p_obj);
+	if (script.is_valid())
+	{
+		if (script->m_obj == NULL)
+			return Variant();
+
+		PyObject* dir = PyObject_Dir(script->m_obj);
+		Variant ret = PyScript::py2gd(dir);
+		Py_XDECREF(dir);
+		return ret;
+	}
+
+	Object* obj = p_obj;
+	if (obj != NULL)
+	{
+		PyScriptInstance* inst = dynamic_cast<PyScriptInstance *>(obj->get_script_instance());
+		if (inst && inst->m_obj != NULL)
+		{
+			PyObject* dir = PyObject_Dir(inst->m_obj);
+			Variant ret = PyScript::py2gd(dir);
+			Py_XDECREF(dir);
+			return ret;
+		}
+	}
+
+	
+	return Variant();
+}
+
+void Python::_bind_methods()
+{
+	ClassDB::bind_method(D_METHOD("dir", "obj"), &Python::dir);
+}
+
 inline PyObject* PyScript::gd2py(const Variant& p_source)
 {
 	return gd2py(&p_source);
@@ -168,7 +206,11 @@ Variant PyScript::py2gd(PyObject* p_source)
 	}
 	else if (PyUnicode_Check(p_source))
 	{
-		return PyUnicode_AS_UNICODE(p_source);
+		auto str = PyUnicode_AS_UNICODE(p_source);
+		String ret = str;
+		if (str)
+			PyMem_Free(str);
+		return ret;
 	}
 	else if (PyTuple_Check(p_source))
 	{
@@ -361,63 +403,85 @@ Variant PyScript::call(const StringName& p_method, const Variant** p_args, int p
 	if (mod && PyObject_HasAttrString(mod, method.utf8().get_data()))
 	{
 		PyObject* func = PyObject_GetAttrString(mod, method.utf8().get_data());
-		if (PyFunction_Check(func) || PyMethod_Check(func))
+		if (func)
 		{
-			int argc = get_pyFunc_argc(func);
-			if (p_argcount > argc)
+			if (PyType_Check(func))
 			{
+				PyObject* pRet;
+				if (p_argcount > 0)
+				{
+					PyObject* args = PyTuple_New(p_argcount);
+					for (int i = 0; i < p_argcount; ++i)
+					{
+						PyTuple_SetItem(args, i, gd2py(p_args[i]));
+					}
+					pRet = PyObject_Call(func, args, NULL);
+				}
+				else
+				{
+					pRet = PyObject_CallFunction(func, NULL);
+				}
+
+				Variant ret = py2gd(pRet);
+				Py_XDECREF(pRet);
 				Py_XDECREF(func);
-				r_error.error = Variant::CallError::CALL_ERROR_TOO_MANY_ARGUMENTS;
-				r_error.argument = argc;
-				return Variant();
+				r_error.argument = 0;
+				r_error.error = Variant::CallError::CALL_OK;
+				return ret;
 			}
-			int defc = get_pyFunc_defc(func);
-			if (p_argcount < argc - defc)
+			else if (PyCallable_Check(func))
 			{
-				Py_XDECREF(func);
-				r_error.error = Variant::CallError::CALL_ERROR_TOO_FEW_ARGUMENTS;
-				r_error.argument = argc;
-				return Variant();
-			}
-			PyObject* args = PyTuple_New(p_argcount);
-			for (int i = 0; i < p_argcount; ++i)
-			{
-				PyTuple_SetItem(args, i, gd2py(p_args[i]));
-			}
-			PyObject* pRet = PyObject_Call(func, args, NULL);
-			Variant ret = py2gd(pRet);
-			Py_XDECREF(pRet);
-			Py_XDECREF(func);
-			r_error.argument = argc;
-			r_error.error = Variant::CallError::CALL_OK;
-			return ret;
-		}
-		else if (PyType_Check(func))
-		{
-			PyObject* pRet;
-			if (p_argcount > 0)
-			{
+				int argc = get_pyFunc_argc(func);
+				if (argc >= 0)
+				{
+					if (p_argcount > argc)
+					{
+						Py_XDECREF(func);
+						r_error.error = Variant::CallError::CALL_ERROR_TOO_MANY_ARGUMENTS;
+						r_error.argument = argc;
+						return Variant();
+					}
+					int defc = get_pyFunc_defc(func);
+					if (p_argcount < argc - defc)
+					{
+						Py_XDECREF(func);
+						r_error.error = Variant::CallError::CALL_ERROR_TOO_FEW_ARGUMENTS;
+						r_error.argument = argc;
+						return Variant();
+					}
+				}
+				
 				PyObject* args = PyTuple_New(p_argcount);
 				for (int i = 0; i < p_argcount; ++i)
 				{
 					PyTuple_SetItem(args, i, gd2py(p_args[i]));
 				}
-				pRet = PyObject_Call(func, args, NULL);
+				PyObject* pRet = PyObject_Call(func, args, NULL);
+				Variant ret = py2gd(pRet);
+				Py_XDECREF(pRet);
+				Py_XDECREF(func);
+				r_error.argument = argc;
+				r_error.error = Variant::CallError::CALL_OK;
+				return ret;
 			}
 			else
 			{
-				pRet = PyObject_CallFunction(func, NULL);
+				PyObject* strObj = PyObject_Str(func);
+				if (strObj)
+				{
+					auto str = PyUnicode_AS_UNICODE(strObj);
+					if (str)
+					{
+						print_line(String("PyScript::call obj = ") + str);
+						PyMem_Free(str);
+					}
+					Py_DECREF(strObj);
+				}
 			}
-			
-			Variant ret = py2gd(pRet);
-			Py_XDECREF(pRet);
+		
 			Py_XDECREF(func);
-			r_error.argument = 0;
-			r_error.error = Variant::CallError::CALL_OK;
-			return ret;
 		}
 		
-		Py_XDECREF(func);
 	}
 	return Script::call(p_method, p_args, p_argcount, r_error);
 }
@@ -425,6 +489,7 @@ Variant PyScript::call(const StringName& p_method, const Variant** p_args, int p
 void PyScript::_bind_methods()
 {
 	//ClassDB::bind_vararg_method(METHOD_FLAGS_DEFAULT, "new", &PyScript::_new, MethodInfo("new"));
+	//ClassDB::bind_method(D_METHOD("dir"), &PyScript::dir);
 }
 
 inline String PyScript::get_module_name() const
@@ -503,9 +568,12 @@ Vector<PyScript::MethodData> PyScript::get_methods_data() const
 		if (PyFunction_Check(value) || PyMethod_Check(value) || PyInstanceMethod_Check(value) || PyType_Check(value))
 		{
 			MethodData md;
-			md.name = PyUnicode_AS_UNICODE(key);
+			auto str = PyUnicode_AS_UNICODE(key);
+			md.name = str;
 			md.argc = get_pyFunc_argc(value);
 			ret.push_back(md);
+			if (str)
+				PyMem_Free(str);
 		}
 	}
 	Py_XDECREF(dict);
@@ -531,7 +599,10 @@ Vector<String> PyScript::get_properties() const
 		{
 			continue;
 		}
-		String na = PyUnicode_AS_UNICODE(key);
+		auto str = PyUnicode_AS_UNICODE(key);
+		String na = str;
+		if (str)
+			PyMem_Free(str);
 
 		ret.push_back(na);
 	}
@@ -955,7 +1026,10 @@ void PyScriptInstance::get_property_list(List<PropertyInfo>* p_properties) const
 		}
 
 		PropertyInfo pi;
-		pi.name = PyUnicode_AS_UNICODE(key);
+		auto str = PyUnicode_AS_UNICODE(key);
+		pi.name = str;
+		if (str)
+			PyMem_Free(str);
 		p_properties->push_back(pi);
 	}
 }
@@ -988,13 +1062,15 @@ void PyScriptInstance::get_method_list(List<MethodInfo>* p_list) const
 	{
 		if (PyFunction_Check(value) || PyMethod_Check(value) || PyInstanceMethod_Check(value) || PyType_Check(value))
 		{
-			MethodInfo mi(PyUnicode_AS_UNICODE(key));
+			auto str = PyUnicode_AS_UNICODE(key);
+			MethodInfo mi(str);
 			int argc = PyScript::get_pyFunc_argc(value);
 			for (int i = 0; i < argc; ++i)
 			{
 				mi.arguments.push_back(PropertyInfo());
 			}
-			
+			if (str)
+				PyMem_Free(str);
 			p_list->push_back(mi);
 		}
 	}
@@ -1038,25 +1114,42 @@ Variant PyScriptInstance::call(const StringName& p_method, const Variant** p_arg
 		}
 		if (func)
 		{
-			if (PyFunction_Check(func) || PyMethod_Check(func) || PyInstanceMethod_Check(func))
+			if (PyType_Check(func))
+			{
+				PyObject* args = PyTuple_New(p_argcount);
+				for (int i = 0; i < p_argcount; ++i)
+				{
+					PyTuple_SetItem(args, i, PyScript::gd2py(p_args[i]));
+				}
+				PyObject* pRet = PyObject_Call(func, args, NULL);
+				Variant ret = PyScript::py2gd(pRet);
+				Py_XDECREF(pRet);
+				Py_XDECREF(func);
+				r_error.argument = 0;
+				r_error.error = Variant::CallError::CALL_OK;
+				return ret;
+			} else if (PyCallable_Check(func))
 			{
 				PyObject* args;
 				int argc = PyScript::get_pyFunc_argc(func);
-				if (p_argcount > argc)
+				if (argc >= 0)
 				{
-					Py_XDECREF(func);
-					r_error.error = Variant::CallError::CALL_ERROR_TOO_MANY_ARGUMENTS;
-					r_error.argument = argc;
-					return Variant();
-				}
-				
-				int defc = PyScript::get_pyFunc_defc(func);
-				if (p_argcount < argc - defc)
-				{
-					Py_XDECREF(func);
-					r_error.error = Variant::CallError::CALL_ERROR_TOO_FEW_ARGUMENTS;
-					r_error.argument = argc;
-					return Variant();
+					if (p_argcount > argc)
+					{
+						Py_XDECREF(func);
+						r_error.error = Variant::CallError::CALL_ERROR_TOO_MANY_ARGUMENTS;
+						r_error.argument = argc;
+						return Variant();
+					}
+
+					int defc = PyScript::get_pyFunc_defc(func);
+					if (p_argcount < argc - defc)
+					{
+						Py_XDECREF(func);
+						r_error.error = Variant::CallError::CALL_ERROR_TOO_FEW_ARGUMENTS;
+						r_error.argument = argc;
+						return Variant();
+					}
 				}
 
 				args = PyTuple_New(p_argcount);
@@ -1098,20 +1191,19 @@ Variant PyScriptInstance::call(const StringName& p_method, const Variant** p_arg
 				r_error.argument = 0;
 				return ret;
 			}
-			else if (PyType_Check(func))
+			else
 			{
-				PyObject* args = PyTuple_New(p_argcount);
-				for (int i = 0; i < p_argcount; ++i)
+				PyObject* strObj = PyObject_Str(func);
+				if (strObj)
 				{
-					PyTuple_SetItem(args, i, PyScript::gd2py(p_args[i]));
+					auto str = PyUnicode_AS_UNICODE(strObj);
+					if (str)
+					{
+						print_line(String("PyScriptInstance::call obj = ") + str);
+						PyMem_Free(str);
+					}
+					Py_DECREF(strObj);
 				}
-				PyObject* pRet = PyObject_Call(func, args, NULL);
-				Variant ret = PyScript::py2gd(pRet);
-				Py_XDECREF(pRet);
-				Py_XDECREF(func);
-				r_error.argument = 0;
-				r_error.error = Variant::CallError::CALL_OK;
-				return ret;
 			}
 			
 			Py_XDECREF(func);

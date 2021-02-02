@@ -3,6 +3,8 @@
 #include "pyscript.h"
 #include "core/os/os.h"
 
+Python* python = NULL;
+
 void py_init()
 {
 	if (Py_IsInitialized())
@@ -24,10 +26,13 @@ void py_deinit()
 void register_pyscript_types()
 {
 	py_init();
+	python = memnew(Python);
+	Engine::get_singleton()->add_singleton(Engine::Singleton("Python", Python::get_singleton()));
 	ClassDB::register_class<PyScript>();
 }
 
 void unregister_pyscript_types()
 {
+	memdelete(python);
 	py_deinit();
 }

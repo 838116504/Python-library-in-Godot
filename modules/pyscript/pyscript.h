@@ -5,10 +5,32 @@
 #include <Python.h>
 #include "core/script_language.h"
 
+class PyScript;
+class PyScriptInstance;
+
+class Python : public Object
+{
+	GDCLASS(Python, Object);
+
+private:
+	static Python* singleton;
+
+protected:
+	static void _bind_methods();
+
+public:
+	Variant dir(const Variant& p_obj) const;
+
+	static Python* get_singleton() { return singleton; };
+
+	Python() { singleton = this; };
+	~Python() {};
+};
 
 class PyScript : public Script
 {
-	GDCLASS(PyScript, Script)
+	GDCLASS(PyScript, Script);
+	friend class Python;
 
 private:
 	String m_moduleName;
@@ -77,7 +99,7 @@ public:
 
 	virtual void get_constants(Map<StringName, Variant>* p_constants);
 	virtual void get_members(Set<StringName>* p_members);
-	
+
 	PyScript();
 	~PyScript();
 };
@@ -85,6 +107,7 @@ public:
 class PyScriptInstance : public ScriptInstance
 {
 	friend class PyScript;
+	friend class Python;
 private:
 	Ref<PyScript> m_script;
 	Object* m_owner = NULL;
