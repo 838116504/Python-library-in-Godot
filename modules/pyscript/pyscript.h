@@ -4,6 +4,7 @@
 #define PY_SSIZE_T_CLEAN
 #include <Python.h>
 #include "core/script_language.h"
+#include "core/func_ref.h"
 
 class PyScript;
 class PyScriptInstance;
@@ -19,7 +20,13 @@ protected:
 	static void _bind_methods();
 
 public:
+	static Ref<PyScript> cast_to_script(const Variant& p_obj);
+	static PyScriptInstance* cast_to_instance(const Variant& p_obj);
 	Variant dir(const Variant& p_obj) const;
+	String str(const Variant& p_obj) const;
+	String _str(PyObject* p_obj) const;
+	Ref<Reference> iter(const Variant& p_obj);
+	Variant next(const Variant& p_iter, const Variant& p_default);
 
 	static Python* get_singleton() { return singleton; };
 
@@ -35,6 +42,7 @@ class PyScript : public Script
 private:
 	String m_moduleName;
 	PyObject* m_obj = NULL;
+	void free();
 
 protected:
 	bool _get(const StringName& p_name, Variant& r_ret) const;
@@ -48,8 +56,10 @@ public:
 	static Variant py2gd(PyObject* p_source);
 	static PyObject* gd2py(const Variant* p_source);
 	static PyObject* gd2py(const Variant& p_source);
-	static int get_pyFunc_argc(PyObject* p_func);
-	static int get_pyFunc_defc(PyObject* p_func);
+	static int get_py_func_argc(PyObject* p_func);
+	static int get_py_func_defc(PyObject* p_func);
+	static Variant call_py_func(PyObject* p_func, const Variant** p_args, int p_argcount, Variant::CallError& r_error);
+	static PyObject* func_gd2py(Ref<FuncRef> p_funcRef);
 
 	String get_module_name() const;
 	PyObject* get_module() const;
@@ -60,6 +70,7 @@ public:
 	}MethodData;
 	Vector<MethodData> get_methods_data() const;
 	Vector<String> get_properties() const;
+
 
 	/*void load_module(const String& p_module);*/
 
@@ -112,12 +123,15 @@ private:
 	Ref<PyScript> m_script;
 	Object* m_owner = NULL;
 	PyObject* m_obj = NULL;
+	inline PyObject* get_py_obj() const { return m_obj; }
+	void set_py_obj(PyObject* p_obj);
+	inline void free() { Py_XDECREF(m_obj); m_obj = NULL; };
 
 protected:
 
 public:
 	virtual Object* get_owner() { return m_owner; }
-	inline PyObject* get_py_obj() const { return m_obj; }
+	inline bool is_valid() const { return /*m_script.is_valid() && m_script->is_valid() &&*/ m_obj; }
 
 	virtual bool set(const StringName& p_name, const Variant& p_value);
 	virtual bool get(const StringName& p_name, Variant& r_ret) const;
@@ -136,6 +150,8 @@ public:
 	virtual MultiplayerAPI::RPCMode get_rset_mode(const StringName& p_variable) const;
 
 	virtual ScriptLanguage* get_language() { return NULL; };
+
+	PyScriptInstance& operator =(const PyScriptInstance& p_rhs);
 
 	PyScriptInstance();
 	~PyScriptInstance();
