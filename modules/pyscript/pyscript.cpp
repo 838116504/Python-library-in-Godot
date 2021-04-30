@@ -1,7 +1,6 @@
 #include "pyscript.h"
 #include "core/os/file_access.h"
 
-
 Python* Python::singleton = NULL;
 
 
@@ -147,6 +146,55 @@ Variant Python::next(const Variant& p_iter, const Variant& p_default)
 	return p_default;
 }
 
+bool Python::run_file(String p_path, Vector<String> p_argv)
+{
+	FileAccess* f = FileAccess::open(p_path, FileAccess::READ);
+	ERR_FAIL_COND_V(!f, false);
+
+	String s = f->get_as_utf8_string();
+	f->close();
+	memdelete(f);
+
+	ERR_FAIL_COND_V(s == "", false);
+
+	int argc = p_argv.size() + 1;
+	wchar_t** wargv = new wchar_t* [argc];
+	/*wargv[0] = Py_DecodeLocale(p_path.utf8().get_data(), nullptr);
+	if (wargv[0] == nullptr)
+	{
+		delete[] wargv;
+		return false;
+	}
+	for (int i = 1; i < argc; ++i)
+	{
+		wargv[i] = Py_DecodeLocale(p_argv[i - 1].utf8().get_data(), nullptr);
+		if (wargv[i] == nullptr)
+		{
+			for (int j = 0; j < i; ++j)
+			{
+				PyMem_RawFree(wargv[j]);
+				wargv[j] = nullptr;
+			}
+			delete[] wargv;
+			return false;
+		}
+	}*/
+	wargv[0] = p_path.ptrw();
+	for (int i = 1; i < argc; ++i)
+	{
+		wargv[i] = p_argv.ptrw()[i - 1].ptrw();
+	}
+	PySys_SetArgv(argc, wargv);
+	bool ret = PyRun_SimpleString(s.utf8().get_data());
+
+	/*for (int i = 0; i < argc; ++i)
+	{
+		PyMem_RawFree(wargv[i]);
+		wargv[i] = nullptr;
+	}*/
+	delete[] wargv;
+	return ret;
+}
 
 void Python::_bind_methods()
 {
@@ -154,6 +202,7 @@ void Python::_bind_methods()
 	ClassDB::bind_method(D_METHOD("str", "object"), &Python::str);
 	ClassDB::bind_method(D_METHOD("iter", "object"), &Python::iter);
 	ClassDB::bind_method(D_METHOD("next", "iter", "default"), &Python::next, Variant());
+	ClassDB::bind_method(D_METHOD("run_file", "path", "argv"), &Python::run_file);
 }
 
 static PyObject* gd_function(PyObject* p_self, PyObject* p_args)

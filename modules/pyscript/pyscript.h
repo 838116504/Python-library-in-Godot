@@ -27,6 +27,7 @@ public:
 	String _str(PyObject* p_obj) const;
 	Ref<Reference> iter(const Variant& p_obj);
 	Variant next(const Variant& p_iter, const Variant& p_default);
+	bool run_file(String p_path, Vector<String> p_argv);
 
 	static Python* get_singleton() { return singleton; };
 
