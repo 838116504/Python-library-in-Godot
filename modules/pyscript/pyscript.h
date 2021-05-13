@@ -55,11 +55,11 @@ protected:
 	static void _bind_methods();
 public:
 	static Variant py2gd(PyObject* p_source);
-	static PyObject* gd2py(const Variant* p_source);
+	static PyObject* gd2py(const Variant* p_source, bool p_tuplePriority = false);
 	static PyObject* gd2py(const Variant& p_source);
 	static int get_py_func_argc(PyObject* p_func);
 	static int get_py_func_defc(PyObject* p_func);
-	static Variant call_py_func(PyObject* p_func, const Variant** p_args, int p_argcount, Variant::CallError& r_error);
+	static Variant call_py_func(PyObject* p_func, const Variant** p_args, int p_argcount, Variant::CallError& r_error, PyObject* p_kwargs = NULL);
 	static PyObject* func_gd2py(Ref<FuncRef> p_funcRef);
 
 	String get_module_name() const;

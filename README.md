@@ -4,20 +4,20 @@
  Godot module for use Python libray on gdscript.
 
 # Installing
-My system is Windows7. The Godot's verson that test use is 3.2.3-stable. Python version is 3.7.9.
+Test system is Windows10. The Godot's verson that test use is 3.3-stable. Python version is 3.9.5.
 
-Put **python37.lib**, **modules** folder and **thirdparty** folder to your Godot source root directory.
+Put **python39.lib**, **modules** folder and **thirdparty** folder to your Godot source root directory.
 
 Then compile, [Godot compile docs](https://docs.godotengine.org/en/stable/development/compiling/index.html)
 
-It need put the **bin/python37.dll** to the directory where the Godot executable file is located.
+It need put the **bin/python39.dll** to the directory where the Godot executable file is located.
 
 # Use orther python version
 I tried to make the cpython source together, I feel too many things need set. I gave up.
 
 I used another method, get the dll, lib and h file from python.org, so need dowload this first.
 
-Install the python and go to the folder you install. Copy the **include** folder to **thirdparty/cpython/**. Copy the **libs/pythonXY.lib** to Godot source root directory. Copy the **pythonXY.dll** to the the directory where the Godot executable file is located.
+Install the python and go to the folder you install. Copy the **include** folder to **thirdparty/cpython**. Copy the **libs/pythonXY.lib** to Godot source root directory. Copy the **pythonXY.dll** to the the directory where the Godot executable file is located.
 
 Then compile, [Godot compile docs](https://docs.godotengine.org/en/stable/development/compiling/index.html)
 
@@ -44,14 +44,29 @@ Call function, method or class(call class = new object)
 
 ```
 var obj = pyScript.classA()
-var ret = obj.func1(arg)
+var ret = obj.func1("arg1")
+var ret2 = obj.call_with_kwarg("func1", "arg1", {"arg2":"arg2"})
 ```
+
+Note: call_with_kwarg is not obj's method, it use for call with kwargs, the first argument must be method name, the final must be kwargs.
 
 Set and get property
 
 ```
 obj.a = "test"
 print(obj.a)
+```
+
+Get iter next
+
+```
+var next = Python.next(iter)
+```
+
+Python object to string
+
+```
+var string = Python.str(pyobject)
 ```
 
 # Principle

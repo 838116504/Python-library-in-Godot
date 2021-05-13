@@ -254,7 +254,7 @@ inline PyObject* PyScript::gd2py(const Variant& p_source)
 	return gd2py(&p_source);
 }
 
-PyObject* PyScript::gd2py(const Variant* p_source)
+PyObject* PyScript::gd2py(const Variant* p_source, bool p_priority)
 {
 	switch (p_source->get_type())
 	{
@@ -314,25 +314,47 @@ PyObject* PyScript::gd2py(const Variant* p_source)
 	{
 		PyObject* pyDict = PyDict_New();
 		Dictionary dict = p_source->operator Dictionary();
+		Array keys = dict.keys();
+		Array values = dict.values();
 		for (int i = 0; i < dict.size(); ++i)
 		{
-			PyObject* pyKey = gd2py(dict.keys()[i]);
-			if (pyKey != Py_None)
+			PyObject* pyValue = gd2py(&(values[i]));
+			if (PyDict_SetItem(pyDict, gd2py(&(keys[i]), true), pyValue) != 0)
 			{
-				PyDict_SetItem(pyDict, pyKey, gd2py(dict[dict.keys()[i]]));
-				Py_XDECREF(pyKey);
-			}	
+				print_error("PyDict_SetItem failed!");
+			}
+			Py_XDECREF(pyValue);
 		}
+
 		return pyDict;
 	}
 	case Variant::ARRAY:
 	{
 		Array a = p_source->operator Array();
-		PyObject* pyList = PyList_New(a.size());
-		for (int i = 0; i < a.size(); ++i)
+		PyObject* pyList;
+		if (p_priority)
 		{
-			PyList_SET_ITEM(pyList, i, gd2py(a[i]));
+			pyList = PyTuple_New(a.size());
+			for (int i = 0; i < a.size(); ++i)
+			{
+				if (PyTuple_SetItem(pyList, i, gd2py(a[i])) != 0)
+				{
+					print_error("PyTuple_SetItem index error!");
+				}
+			}
 		}
+		else
+		{
+			pyList = PyList_New(a.size());
+			for (int i = 0; i < a.size(); ++i)
+			{
+				if (PyList_SetItem(pyList, i, gd2py(a[i])) != 0)
+				{
+					print_error("PyList_SetItem index error!");
+				}
+			}
+		}
+		
 		return pyList;
 	}
 	case Variant::POOL_BYTE_ARRAY:
@@ -349,7 +371,10 @@ PyObject* PyScript::gd2py(const Variant* p_source)
 		PyObject* pyList = PyList_New(a.size());
 		for (int i = 0; i < a.size(); ++i)
 		{
-			PyList_SET_ITEM(pyList, i, gd2py(a[i]));
+			if (PyList_SetItem(pyList, i, gd2py(a[i])) != 0)
+			{
+				print_error("PyList_SetItem index error!");
+			}
 		}
 		return pyList;
 	}
@@ -359,7 +384,10 @@ PyObject* PyScript::gd2py(const Variant* p_source)
 		PyObject* pyList = PyList_New(a.size());
 		for (int i = 0; i < a.size(); ++i)
 		{
-			PyList_SET_ITEM(pyList, i, gd2py(a[i]));
+			if (PyList_SetItem(pyList, i, gd2py(a[i])) != 0)
+			{
+				print_error("PyList_SetItem index error!");
+			}
 		}
 		return pyList;
 	}
@@ -369,7 +397,10 @@ PyObject* PyScript::gd2py(const Variant* p_source)
 		PyObject* pyList = PyList_New(a.size());
 		for (int i = 0; i < a.size(); ++i)
 		{
-			PyList_SET_ITEM(pyList, i, gd2py(a[i]));
+			if (PyList_SetItem(pyList, i, gd2py(a[i])) != 0)
+			{
+				print_error("PyList_SetItem index error!");
+			}
 		}
 		return pyList;
 	}
@@ -505,7 +536,6 @@ int PyScript::get_py_func_argc(PyObject* p_func)
 	if (PyInstanceMethod_Check(p_func))
 	{
 		p_func = PyInstanceMethod_GET_FUNCTION(p_func);
-		keep = 1;
 	}
 	else if (PyMethod_Check(p_func))
 	{
@@ -520,7 +550,7 @@ int PyScript::get_py_func_argc(PyObject* p_func)
 	if (PyFunction_Check(p_func))
 	{
 		auto co = (PyCodeObject*)PyFunction_GetCode(p_func);
-		return co->co_argcount + co->co_kwonlyargcount - keep;
+		return co->co_argcount/* + co->co_kwonlyargcount*/ - keep;
 	}
 	return -1;
 }
@@ -544,13 +574,13 @@ int PyScript::get_py_func_defc(PyObject* p_func)
 		auto co = PyFunction_GetDefaults(p_func);
 		if (co)
 		{
-			return PyObject_Size(co);
+			return PyObject_Size(co)/* - (PyCodeObject*)PyFunction_GetCode(p_func)->co_kwonlyargcount*/;
 		}
 	}
 	return 0;
 }
 
-Variant PyScript::call_py_func(PyObject* p_func, const Variant** p_args, int p_argcount, Variant::CallError& r_error)
+Variant PyScript::call_py_func(PyObject* p_func, const Variant** p_args, int p_argcount, Variant::CallError& r_error, PyObject* p_kwargs)
 {
 	if (!p_func || !PyCallable_Check(p_func))
 	{
@@ -587,12 +617,12 @@ Variant PyScript::call_py_func(PyObject* p_func, const Variant** p_args, int p_a
 	int argc = get_py_func_argc(p_func);
 	if (argc >= 0)
 	{
-		if (p_argcount > argc)
+		/*if (p_argcount > argc)
 		{
 			r_error.error = Variant::CallError::CALL_ERROR_TOO_MANY_ARGUMENTS;
 			r_error.argument = argc;
 			return Variant();
-		}
+		}*/
 		int defc = get_py_func_defc(p_func);
 		if (p_argcount < argc - defc)
 		{
@@ -607,7 +637,8 @@ Variant PyScript::call_py_func(PyObject* p_func, const Variant** p_args, int p_a
 	{
 		PyTuple_SetItem(args, i, gd2py(p_args[i]));
 	}
-	PyObject* pRet = PyObject_Call(p_func, args, NULL);
+
+	PyObject* pRet = PyObject_Call(p_func, args, p_kwargs);
 	Variant ret = py2gd(pRet);
 	Py_XDECREF(pRet);
 	Py_XDECREF(args);
@@ -697,27 +728,66 @@ Variant PyScript::call(const StringName& p_method, const Variant** p_args, int p
 	if (!is_valid())
 		return Script::call(p_method, p_args, p_argcount, r_error);
 
-	PyObject* mod = get_module();
+	PyObject* kwarg = NULL;
 	auto method = p_method.operator String();
+	if (p_method == "call_with_kwarg")
+	{
+		if (p_argcount < 2)
+		{
+			r_error.error = Variant::CallError::CALL_ERROR_TOO_FEW_ARGUMENTS;
+			r_error.argument = 0;
+			return Variant();
+		}
+
+		if (p_args[p_argcount - 1]->get_type() != Variant::DICTIONARY)
+		{
+			r_error.error = Variant::CallError::CALL_ERROR_INVALID_ARGUMENT;
+			r_error.argument = p_argcount - 1;
+			r_error.expected = Variant::DICTIONARY;
+			return Variant();
+		}
+
+		if (p_args[0]->get_type() != Variant::STRING)
+		{
+			r_error.error = Variant::CallError::CALL_ERROR_INVALID_ARGUMENT;
+			r_error.argument = 0;
+			r_error.expected = Variant::STRING;
+			return Variant();
+		}
+
+		kwarg = gd2py(p_args[p_argcount - 1]);
+		method = p_args[0]->operator String();
+		p_argcount -= 2;
+		++p_args;
+	}
+
+	PyObject* mod = get_module();
 	Variant ret;
 	if (PyObject_HasAttrString(mod, method.utf8().get_data()))
 	{
 		PyObject* func = PyObject_GetAttrString(mod, method.utf8().get_data());
 		if (func)
 		{
-			ret = call_py_func(func, p_args, p_argcount, r_error);
+			ret = call_py_func(func, p_args, p_argcount, r_error, kwarg);
 			Py_DECREF(func);
 			if (r_error.error == Variant::CallError::CALL_OK)
+			{
+				Py_XDECREF(kwarg);
 				return ret;
+			}
 		}
 	}
 
 	if ((method == "new" && PyType_Check(mod)) || (method == "call_self" && PyCallable_Check(mod)))
 	{
-		ret = call_py_func(mod, p_args, p_argcount, r_error);
+		ret = call_py_func(mod, p_args, p_argcount, r_error, kwarg);
 		if (r_error.error == Variant::CallError::CALL_OK)
+		{
+			Py_XDECREF(kwarg);
 			return ret;
+		}
 	}
+	Py_XDECREF(kwarg);
 
 	if (r_error.error == Variant::CallError::CALL_ERROR_TOO_FEW_ARGUMENTS ||
 		r_error.error == Variant::CallError::CALL_ERROR_TOO_MANY_ARGUMENTS)
@@ -1304,6 +1374,8 @@ void PyScriptInstance::get_method_list(List<MethodInfo>* p_list) const
 	if (!is_valid())
 		return;
 
+	p_list->push_back(MethodInfo("call_with_kwarg"));
+
 	PyObject* obj = get_py_obj();
 	PyObject* attrs = PyObject_GenericGetDict(obj, NULL);
 	if (!attrs)
@@ -1334,9 +1406,13 @@ bool PyScriptInstance::has_method(const StringName& p_method) const
 	if (!is_valid())
 		return false;
 
+	if (p_method == "call_with_kwarg")
+		return true;
+
 	PyObject* obj = get_py_obj();
 	auto method = String(p_method);
 	bool ret = false;
+	
 	if (PyObject_HasAttrString(obj, method.utf8().get_data()))
 	{
 		PyObject* attr = PyObject_GetAttrString(obj, method.utf8().get_data());
@@ -1358,29 +1434,69 @@ Variant PyScriptInstance::call(const StringName& p_method, const Variant** p_arg
 		r_error.error = Variant::CallError::CALL_ERROR_INVALID_METHOD;
 		return Variant();
 	}
-		
+
+	PyObject* kwarg = NULL;
+	auto method = p_method.operator String();
+	if (p_method == "call_with_kwarg")
+	{
+		if (p_argcount < 2)
+		{
+			r_error.error = Variant::CallError::CALL_ERROR_TOO_FEW_ARGUMENTS;
+			r_error.argument = 0;
+			return Variant();
+		}
+
+		if (p_args[p_argcount - 1]->get_type() != Variant::DICTIONARY)
+		{
+			r_error.error = Variant::CallError::CALL_ERROR_INVALID_ARGUMENT;
+			r_error.argument = p_argcount - 1;
+			r_error.expected = Variant::DICTIONARY;
+			return Variant();
+		}
+
+		if (p_args[0]->get_type() != Variant::STRING)
+		{
+			r_error.error = Variant::CallError::CALL_ERROR_INVALID_ARGUMENT;
+			r_error.argument = 0;
+			r_error.expected = Variant::STRING;
+			return Variant();
+		}
+
+		PyObject* kwarg = PyScript::gd2py(p_args[p_argcount - 1]);
+		method = p_args[0]->operator String();
+		p_argcount -= 2;
+		++p_args;
+	}
 
 	PyObject* obj = get_py_obj();
-	auto method = p_method.operator String();
+	
 	Variant ret;
 	if (PyObject_HasAttrString(obj, method.utf8().get_data()))
 	{
 		PyObject* func = PyObject_GetAttrString(obj, method.utf8().get_data());
 		if (func)
 		{
-			ret = PyScript::call_py_func(func, p_args, p_argcount, r_error);
+			ret = PyScript::call_py_func(func, p_args, p_argcount, r_error, kwarg);
 			Py_DECREF(func);
 			if (r_error.error == Variant::CallError::CALL_OK)
+			{
+				Py_XDECREF(kwarg);
 				return ret;
+			}
 		}
 	}
 
 	if ((method == "new" && PyType_Check(obj)) || (method == "call_self" && PyCallable_Check(obj)))
 	{
-		ret = PyScript::call_py_func(obj, p_args, p_argcount, r_error);
+		ret = PyScript::call_py_func(obj, p_args, p_argcount, r_error, kwarg);
 		if (r_error.error == Variant::CallError::CALL_OK)
+		{
+			Py_XDECREF(kwarg);
 			return ret;
+		}
 	}
+
+	Py_XDECREF(kwarg);
 
 	if (r_error.error == Variant::CallError::CALL_ERROR_TOO_FEW_ARGUMENTS ||
 		r_error.error == Variant::CallError::CALL_ERROR_TOO_MANY_ARGUMENTS)
