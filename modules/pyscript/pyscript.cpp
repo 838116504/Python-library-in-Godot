@@ -291,6 +291,7 @@ PyObject* PyScript::gd2py(const Variant* p_source, bool p_priority)
 				auto mod = s->get_module();
 				if (mod)
 				{
+					Py_INCREF(mod);
 					return mod;
 				}
 				return Py_None;
@@ -300,13 +301,16 @@ PyObject* PyScript::gd2py(const Variant* p_source, bool p_priority)
 			{
 				auto fObj = func_gd2py(f);
 				if (fObj)
+				{
 					return fObj;
+				}
 				return Py_None;
 			}
 		}
 		auto inst = Python::cast_to_instance(*p_source);
 		if (inst && inst->is_valid())
 		{
+			Py_INCREF(inst->get_py_obj());
 			return inst->get_py_obj();
 		}
 	} break;
